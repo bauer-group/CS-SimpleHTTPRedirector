@@ -391,8 +391,6 @@ func (rd *Redirector) redirectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	targetURL := rd.buildTargetURL(rule, r)
-	log.Printf("Redirecting %s%s -> %s (%d)", host, r.URL.RequestURI(), targetURL, rule.statusCode)
-
 	http.Redirect(w, r, targetURL, rule.statusCode)
 }
 
