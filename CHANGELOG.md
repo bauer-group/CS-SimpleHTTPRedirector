@@ -1,3 +1,10 @@
+# [0.2.0](https://github.com/bauer-group/CS-SimpleHTTPRedirector/compare/v0.1.1...v0.2.0) (2025-12-29)
+
+
+### Features
+
+* log all source domains for Coolify configuration ([7fa0482](https://github.com/bauer-group/CS-SimpleHTTPRedirector/commit/7fa04827f80ae62fca7825c121f7dadc8d7e4993))
+
 ## [0.1.1](https://github.com/bauer-group/CS-SimpleHTTPRedirector/compare/v0.1.0...v0.1.1) (2025-12-29)
 
 
