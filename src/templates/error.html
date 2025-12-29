@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.StatusCode}} - {{.Title}}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #e4e4e4;
+        }
+        .container {
+            text-align: center;
+            padding: 3rem;
+            max-width: 600px;
+        }
+        .status-code {
+            font-size: 8rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1;
+            margin-bottom: 1rem;
+        }
+        .title {
+            font-size: 1.75rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #fff;
+        }
+        .message {
+            font-size: 1.1rem;
+            color: #a0a0a0;
+            line-height: 1.6;
+            margin-bottom: 2rem;
+        }
+        .host {
+            display: inline-block;
+            background: rgba(255,255,255,0.1);
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            font-size: 0.95rem;
+            color: #667eea;
+            margin-bottom: 2rem;
+        }
+        .divider {
+            width: 60px;
+            height: 4px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 2px;
+            margin: 0 auto 2rem;
+        }
+        .footer {
+            font-size: 0.85rem;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="status-code">{{.StatusCode}}</div>
+        <div class="divider"></div>
+        <h1 class="title">{{.Title}}</h1>
+        <p class="message">{{.Message}}</p>
+        {{if .Host}}<div class="host">{{.Host}}</div>{{end}}
+        <p class="footer">SimpleHTTPRedirector</p>
+    </div>
+</body>
+</html>

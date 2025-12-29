@@ -12,6 +12,8 @@ services:
     image: bauergroup/simple-http-redirector:latest
     container_name: ${STACK_NAME:-redirector}_APP
     restart: unless-stopped
+    environment:
+      - TRUST_PROXY=${TRUST_PROXY:-true}
     volumes:
       - ${CONFIG_PATH:-./config}/redirects.json:/app/config/redirects.json:ro
     expose:

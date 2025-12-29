@@ -13,6 +13,8 @@ services:
       dockerfile: Dockerfile
     container_name: http-redirector
     restart: unless-stopped
+    environment:
+      - TRUST_PROXY=${TRUST_PROXY:-false}
     expose:
       - "8080/tcp"
     ports:

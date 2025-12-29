@@ -17,6 +17,7 @@ RUN go mod download
 
 # Copy source code
 COPY main.go ./
+COPY templates/ ./templates/
 
 # Build static binary
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
@@ -48,8 +49,9 @@ RUN apk add --no-cache ca-certificates curl tzdata \
 # Setup application directory
 WORKDIR /app
 
-# Copy binary
+# Copy binary and templates
 COPY --from=builder /build/redirector /app/redirector
+COPY --from=builder /build/templates/ /app/templates/
 
 # Create config directory
 RUN mkdir -p /app/config && chown -R app:app /app
@@ -57,7 +59,9 @@ RUN mkdir -p /app/config && chown -R app:app /app
 # Environment
 ENV TZ=UTC
 ENV CONFIG_PATH=/app/config/redirects.json
+ENV TEMPLATE_PATH=/app/templates/error.html
 ENV SERVER_PORT=8080
+ENV TRUST_PROXY=true
 
 # Expose default port
 EXPOSE 8080/tcp

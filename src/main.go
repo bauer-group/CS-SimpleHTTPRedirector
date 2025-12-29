@@ -3,12 +3,16 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
 // RedirectRule defines a single redirect configuration
@@ -19,9 +23,55 @@ type RedirectRule struct {
 	PreservePath  bool     `json:"preserve_path"`  // Keep the original path
 	PreserveQuery bool     `json:"preserve_query"` // Keep query parameters
 	statusCode    int      // Parsed status code (internal)
+	parsedTarget  *url.URL // Parsed and validated target URL (internal)
 }
 
-var rules []RedirectRule
+// Config holds server configuration
+type Config struct {
+	TrustProxy bool // Trust X-Forwarded-* headers
+}
+
+// RateLimiter implements a simple token bucket rate limiter per IP
+type RateLimiter struct {
+	mu       sync.Mutex
+	visitors map[string]*visitor
+}
+
+type visitor struct {
+	tokens    float64
+	lastSeen  time.Time
+}
+
+// Redirector is the main application handler
+type Redirector struct {
+	rules         []RedirectRule
+	config        Config
+	rateLimiter   *RateLimiter
+	errorTemplate *template.Template
+}
+
+// Rate limit settings (very generous to avoid false positives)
+const (
+	rateLimitTokens    = 100.0 // Max tokens (requests) per IP
+	rateLimitPerSecond = 10.0  // Token refill rate per second
+	rateLimitCleanup   = 5 * time.Minute
+)
+
+// ErrorPageData holds data for error page template
+type ErrorPageData struct {
+	StatusCode int
+	Title      string
+	Message    string
+	Host       string
+}
+
+// Fallback error template if file not found
+const fallbackErrorTemplate = `<!DOCTYPE html>
+<html><head><title>{{.StatusCode}} - {{.Title}}</title>
+<style>body{font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#1a1a2e;color:#fff;}
+.c{text-align:center;}.code{font-size:6rem;color:#667eea;}.msg{color:#a0a0a0;}</style></head>
+<body><div class="c"><div class="code">{{.StatusCode}}</div><h1>{{.Title}}</h1><p class="msg">{{.Message}}</p>
+{{if .Host}}<p style="color:#667eea;">{{.Host}}</p>{{end}}</div></body></html>`
 
 func main() {
 	// Load configuration
@@ -30,12 +80,27 @@ func main() {
 		configPath = "/app/config/redirects.json"
 	}
 
-	if err := loadConfig(configPath); err != nil {
+	// Load error template
+	templatePath := os.Getenv("TEMPLATE_PATH")
+	if templatePath == "" {
+		templatePath = "/app/templates/error.html"
+	}
+
+	// Create redirector instance
+	redirector := &Redirector{
+		config: Config{
+			TrustProxy: getEnvBool("TRUST_PROXY", true),
+		},
+		rateLimiter:   newRateLimiter(),
+		errorTemplate: loadErrorTemplate(templatePath),
+	}
+
+	if err := redirector.loadConfig(configPath); err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	log.Printf("Loaded %d redirect rules", len(rules))
-	for _, rule := range rules {
+	log.Printf("Loaded %d redirect rules (trust_proxy=%v)", len(redirector.rules), redirector.config.TrustProxy)
+	for _, rule := range redirector.rules {
 		log.Printf("  %v -> %s (%d, path=%v, query=%v)",
 			rule.Source, rule.Target, rule.statusCode,
 			rule.PreservePath, rule.PreserveQuery)
@@ -49,28 +114,123 @@ func main() {
 		}
 	}
 
-	http.HandleFunc("/health", healthHandler)
-	http.HandleFunc("/", redirectHandler)
+	// Create HTTP server with timeouts
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", redirector.healthHandler)
+	mux.HandleFunc("/", redirector.redirectHandler)
+
+	server := &http.Server{
+		Addr:         fmt.Sprintf(":%d", port),
+		Handler:      mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
+
+	// Start rate limiter cleanup goroutine
+	go redirector.rateLimiter.cleanupLoop()
 
 	log.Printf("Starting HTTP Redirector on port %d", port)
-	if err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil); err != nil {
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
 }
 
-func loadConfig(path string) error {
+// getEnvBool reads a boolean environment variable with default
+func getEnvBool(key string, defaultVal bool) bool {
+	val := os.Getenv(key)
+	if val == "" {
+		return defaultVal
+	}
+	switch strings.ToLower(val) {
+	case "true", "1", "yes", "on":
+		return true
+	case "false", "0", "no", "off":
+		return false
+	default:
+		return defaultVal
+	}
+}
+
+// loadErrorTemplate loads the error template from file or uses fallback
+func loadErrorTemplate(path string) *template.Template {
+	// Try to load from file
+	tmpl, err := template.ParseFiles(path)
+	if err != nil {
+		log.Printf("Error template not found at %s, using fallback", path)
+		// Use fallback template
+		tmpl, err = template.New("error").Parse(fallbackErrorTemplate)
+		if err != nil {
+			log.Fatalf("Failed to parse fallback template: %v", err)
+		}
+	} else {
+		log.Printf("Loaded error template from %s", path)
+	}
+	return tmpl
+}
+
+// newRateLimiter creates a new rate limiter
+func newRateLimiter() *RateLimiter {
+	return &RateLimiter{
+		visitors: make(map[string]*visitor),
+	}
+}
+
+// allow checks if the IP is allowed to make a request
+func (rl *RateLimiter) allow(ip string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := time.Now()
+	v, exists := rl.visitors[ip]
+	if !exists {
+		rl.visitors[ip] = &visitor{tokens: rateLimitTokens - 1, lastSeen: now}
+		return true
+	}
+
+	// Refill tokens based on time elapsed
+	elapsed := now.Sub(v.lastSeen).Seconds()
+	v.tokens += elapsed * rateLimitPerSecond
+	if v.tokens > rateLimitTokens {
+		v.tokens = rateLimitTokens
+	}
+	v.lastSeen = now
+
+	if v.tokens >= 1 {
+		v.tokens--
+		return true
+	}
+	return false
+}
+
+// cleanupLoop periodically removes old entries
+func (rl *RateLimiter) cleanupLoop() {
+	ticker := time.NewTicker(rateLimitCleanup)
+	for range ticker.C {
+		rl.mu.Lock()
+		now := time.Now()
+		for ip, v := range rl.visitors {
+			if now.Sub(v.lastSeen) > rateLimitCleanup {
+				delete(rl.visitors, ip)
+			}
+		}
+		rl.mu.Unlock()
+	}
+}
+
+func (rd *Redirector) loadConfig(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("cannot read config file: %w", err)
 	}
 
-	if err := json.Unmarshal(data, &rules); err != nil {
+	if err := json.Unmarshal(data, &rd.rules); err != nil {
 		return fmt.Errorf("cannot parse config: %w", err)
 	}
 
 	// Validate and parse type to status code
-	for i := range rules {
-		rule := &rules[i]
+	for i := range rd.rules {
+		rule := &rd.rules[i]
 
 		// Parse type to status code
 		statusCode, err := parseRedirectType(rule.Type)
@@ -88,9 +248,75 @@ func loadConfig(path string) error {
 		if rule.Target == "" {
 			return fmt.Errorf("rule %d: target cannot be empty", i)
 		}
+
+		// Validate and parse target URL (prevent open redirect)
+		parsedTarget, err := validateTargetURL(rule.Target)
+		if err != nil {
+			return fmt.Errorf("rule %d: %w", i, err)
+		}
+		rule.parsedTarget = parsedTarget
 	}
 
 	return nil
+}
+
+// validateTargetURL validates the target URL to prevent open redirect vulnerabilities
+func validateTargetURL(target string) (*url.URL, error) {
+	// Ensure target URL has a scheme
+	if !strings.HasPrefix(target, "http://") && !strings.HasPrefix(target, "https://") {
+		target = "https://" + target
+	}
+
+	parsed, err := url.Parse(target)
+	if err != nil {
+		return nil, fmt.Errorf("invalid target URL '%s': %w", target, err)
+	}
+
+	// Must have a valid host
+	if parsed.Host == "" {
+		return nil, fmt.Errorf("invalid target URL '%s': missing host", target)
+	}
+
+	// Prevent redirects to localhost/loopback addresses
+	host := parsed.Hostname()
+	if isLocalAddress(host) {
+		return nil, fmt.Errorf("invalid target URL '%s': cannot redirect to local addresses", target)
+	}
+
+	// Must be http or https
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return nil, fmt.Errorf("invalid target URL '%s': scheme must be http or https", target)
+	}
+
+	return parsed, nil
+}
+
+// isLocalAddress checks if the host is a local/loopback address
+func isLocalAddress(host string) bool {
+	// Check common local hostnames
+	lowerHost := strings.ToLower(host)
+	if lowerHost == "localhost" || lowerHost == "localhost.localdomain" {
+		return true
+	}
+
+	// Check if it's an IP address
+	ip := net.ParseIP(host)
+	if ip != nil {
+		// Check loopback (127.0.0.0/8 or ::1)
+		if ip.IsLoopback() {
+			return true
+		}
+		// Check private ranges (optional, but good for security)
+		if ip.IsPrivate() {
+			return true
+		}
+		// Check link-local
+		if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			return true
+		}
+	}
+
+	return false
 }
 
 // parseRedirectType converts type string to HTTP status code
@@ -117,40 +343,94 @@ func parseRedirectType(t string) (int, error) {
 	}
 }
 
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
+// renderErrorPage renders a professional HTML error page
+func (rd *Redirector) renderErrorPage(w http.ResponseWriter, data ErrorPageData) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(data.StatusCode)
+	if err := rd.errorTemplate.Execute(w, data); err != nil {
+		log.Printf("Error rendering error page: %v", err)
+	}
 }
 
-func redirectHandler(w http.ResponseWriter, r *http.Request) {
-	// Get the original host from proxy headers (Traefik sets these)
-	host := getOriginalHost(r)
+func (rd *Redirector) healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(map[string]string{"status": "healthy"}); err != nil {
+		log.Printf("Error encoding health response: %v", err)
+	}
+}
 
-	rule := findMatchingRule(host)
-	if rule == nil {
-		log.Printf("No rule found for host: %s (X-Forwarded-Host: %s, Host: %s)",
-			host, r.Header.Get("X-Forwarded-Host"), r.Host)
-		http.Error(w, "No redirect configured for this host", http.StatusNotFound)
+func (rd *Redirector) redirectHandler(w http.ResponseWriter, r *http.Request) {
+	// Rate limiting
+	clientIP := rd.getClientIP(r)
+	if !rd.rateLimiter.allow(clientIP) {
+		log.Printf("Rate limit exceeded for IP: %s", clientIP)
+		rd.renderErrorPage(w, ErrorPageData{
+			StatusCode: http.StatusTooManyRequests,
+			Title:      "Too Many Requests",
+			Message:    "You have sent too many requests in a short period of time. Please wait a moment and try again.",
+		})
 		return
 	}
 
-	targetURL := buildTargetURL(rule, r)
+	// Get the original host from proxy headers (if trusted) or Host header
+	host := rd.getOriginalHost(r)
+
+	rule := rd.findMatchingRule(host)
+	if rule == nil {
+		log.Printf("No rule found for host: %s (X-Forwarded-Host: %s, Host: %s)",
+			host, r.Header.Get("X-Forwarded-Host"), r.Host)
+		rd.renderErrorPage(w, ErrorPageData{
+			StatusCode: http.StatusNotFound,
+			Title:      "No Redirect Configured",
+			Message:    "There is no redirect rule configured for this domain.",
+			Host:       host,
+		})
+		return
+	}
+
+	targetURL := rd.buildTargetURL(rule, r)
 	log.Printf("Redirecting %s%s -> %s (%d)", host, r.URL.RequestURI(), targetURL, rule.statusCode)
 
 	http.Redirect(w, r, targetURL, rule.statusCode)
 }
 
-// getOriginalHost extracts the original host from proxy headers
-// Priority: X-Forwarded-Host > Host header
-func getOriginalHost(r *http.Request) string {
-	// Check X-Forwarded-Host first (set by Traefik/reverse proxies)
-	if forwardedHost := r.Header.Get("X-Forwarded-Host"); forwardedHost != "" {
-		// X-Forwarded-Host can contain multiple hosts (comma-separated), take the first
-		if idx := strings.Index(forwardedHost, ","); idx != -1 {
-			forwardedHost = strings.TrimSpace(forwardedHost[:idx])
+// getClientIP extracts the client IP address
+func (rd *Redirector) getClientIP(r *http.Request) string {
+	// If we trust proxy headers, check X-Forwarded-For
+	if rd.config.TrustProxy {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			// X-Forwarded-For can contain multiple IPs, take the first (original client)
+			if idx := strings.Index(xff, ","); idx != -1 {
+				return strings.TrimSpace(xff[:idx])
+			}
+			return strings.TrimSpace(xff)
 		}
-		return normalizeHost(forwardedHost)
+		if xrip := r.Header.Get("X-Real-IP"); xrip != "" {
+			return strings.TrimSpace(xrip)
+		}
+	}
+
+	// Fallback to RemoteAddr
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return ip
+}
+
+// getOriginalHost extracts the original host from proxy headers (if trusted)
+// Priority: X-Forwarded-Host > Host header
+func (rd *Redirector) getOriginalHost(r *http.Request) string {
+	// Only trust proxy headers if configured
+	if rd.config.TrustProxy {
+		if forwardedHost := r.Header.Get("X-Forwarded-Host"); forwardedHost != "" {
+			// X-Forwarded-Host can contain multiple hosts (comma-separated), take the first
+			if idx := strings.Index(forwardedHost, ","); idx != -1 {
+				forwardedHost = strings.TrimSpace(forwardedHost[:idx])
+			}
+			return normalizeHost(forwardedHost)
+		}
 	}
 
 	// Fallback to Host header
@@ -167,41 +447,41 @@ func normalizeHost(host string) string {
 	return host
 }
 
-func findMatchingRule(host string) *RedirectRule {
+func (rd *Redirector) findMatchingRule(host string) *RedirectRule {
 	// First, try exact match in source
-	for i := range rules {
-		for _, src := range rules[i].Source {
+	for i := range rd.rules {
+		for _, src := range rd.rules[i].Source {
 			srcHost := strings.ToLower(src)
 			if srcHost == host {
-				return &rules[i]
+				return &rd.rules[i]
 			}
 		}
 	}
 
 	// Then, try wildcard match (*.domain.de matches sub.domain.de)
-	for i := range rules {
-		for _, src := range rules[i].Source {
+	for i := range rd.rules {
+		for _, src := range rd.rules[i].Source {
 			srcHost := strings.ToLower(src)
 			if strings.HasPrefix(srcHost, "*.") {
 				baseDomain := srcHost[2:]
 				if strings.HasSuffix(host, baseDomain) && host != baseDomain {
-					return &rules[i]
+					return &rd.rules[i]
 				}
 			}
 		}
 	}
 
 	// Finally, try match with www prefix handling
-	for i := range rules {
-		for _, src := range rules[i].Source {
+	for i := range rd.rules {
+		for _, src := range rd.rules[i].Source {
 			srcHost := strings.ToLower(src)
 			// If rule is for domain.de, also match www.domain.de
 			if "www."+srcHost == host {
-				return &rules[i]
+				return &rd.rules[i]
 			}
 			// If rule is for www.domain.de, also match domain.de
 			if strings.HasPrefix(srcHost, "www.") && srcHost[4:] == host {
-				return &rules[i]
+				return &rd.rules[i]
 			}
 		}
 	}
@@ -209,18 +489,13 @@ func findMatchingRule(host string) *RedirectRule {
 	return nil
 }
 
-func buildTargetURL(rule *RedirectRule, r *http.Request) string {
-	targetURL := rule.Target
-
-	// Ensure target URL has a scheme
-	if !strings.HasPrefix(targetURL, "http://") && !strings.HasPrefix(targetURL, "https://") {
-		targetURL = "https://" + targetURL
-	}
-
-	// Parse the target URL
-	parsed, err := url.Parse(targetURL)
-	if err != nil {
-		return targetURL
+func (rd *Redirector) buildTargetURL(rule *RedirectRule, r *http.Request) string {
+	// Clone the pre-validated target URL
+	parsed := &url.URL{
+		Scheme:   rule.parsedTarget.Scheme,
+		Host:     rule.parsedTarget.Host,
+		Path:     rule.parsedTarget.Path,
+		RawQuery: rule.parsedTarget.RawQuery,
 	}
 
 	// Preserve path if configured

@@ -11,6 +11,9 @@ A lightweight, high-performance HTTP redirect service with JSON-based configurat
 - **Wildcard Support** - Match subdomains with `*.domain.com` patterns
 - **Auto www Handling** - Rules for `domain.com` automatically match `www.domain.com`
 - **Proxy-Aware** - Correctly handles `X-Forwarded-Host` headers from reverse proxies
+- **Trusted Proxy Mode** - Configurable trust for proxy headers (`TRUST_PROXY`)
+- **Rate Limiting** - Built-in protection against request flooding
+- **Secure by Default** - Target URL validation prevents open redirect vulnerabilities
 - **Lightweight** - ~15MB Docker image based on Alpine Linux
 - **Health Endpoint** - Built-in `/health` endpoint for container orchestration
 
@@ -149,6 +152,9 @@ old-docs.com/api/v2 → new-site.com/documentation/api/v2
 Copy `.env.example` to `.env` and configure as needed:
 
 ```bash
+# Server settings (all compose files)
+TRUST_PROXY=true               # Trust X-Forwarded-* headers (default: true)
+
 # For docker-compose.traefik.yml
 STACK_NAME=redirector          # Container name prefix
 PROXY_NETWORK=proxy            # External Traefik network
@@ -158,6 +164,12 @@ REDIRECT_HOST_RULE=Host(`...`) # Traefik routing rule
 # For docker-compose.development.yml
 HOST_PORT=8080                 # Local port mapping
 ```
+
+### Security Settings
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `TRUST_PROXY` | `true` | Trust `X-Forwarded-*` headers from reverse proxy. Set to `false` if exposed directly to the internet. |
 
 ## Health Check
 
