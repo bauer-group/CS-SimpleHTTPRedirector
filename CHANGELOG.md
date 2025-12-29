@@ -1,3 +1,10 @@
+## [0.1.1](https://github.com/bauer-group/CS-SimpleHTTPRedirector/compare/v0.1.0...v0.1.1) (2025-12-29)
+
+
+### Bug Fixes
+
+* Update footer link for bauer-group.com to redirect correctly ([e67dc1b](https://github.com/bauer-group/CS-SimpleHTTPRedirector/commit/e67dc1b7ada7186b93259585824d3982b5bc8122))
+
 # [0.1.0](https://github.com/bauer-group/CS-SimpleHTTPRedirector/compare/v0.0.0...v0.1.0) (2025-12-29)
 
 
