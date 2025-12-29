@@ -65,14 +65,6 @@ type ErrorPageData struct {
 	Host       string
 }
 
-// Fallback error template if file not found
-const fallbackErrorTemplate = `<!DOCTYPE html>
-<html><head><title>{{.StatusCode}} - {{.Title}}</title>
-<style>body{font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#1a1a2e;color:#fff;}
-.c{text-align:center;}.code{font-size:6rem;color:#667eea;}.msg{color:#a0a0a0;}</style></head>
-<body><div class="c"><div class="code">{{.StatusCode}}</div><h1>{{.Title}}</h1><p class="msg">{{.Message}}</p>
-{{if .Host}}<p style="color:#667eea;">{{.Host}}</p>{{end}}</div></body></html>`
-
 func main() {
 	// Load configuration
 	configPath := os.Getenv("CONFIG_PATH")
@@ -152,20 +144,14 @@ func getEnvBool(key string, defaultVal bool) bool {
 	}
 }
 
-// loadErrorTemplate loads the error template from file or uses fallback
+// loadErrorTemplate loads the error template from file, returns nil if not found
 func loadErrorTemplate(path string) *template.Template {
-	// Try to load from file
 	tmpl, err := template.ParseFiles(path)
 	if err != nil {
-		log.Printf("Error template not found at %s, using fallback", path)
-		// Use fallback template
-		tmpl, err = template.New("error").Parse(fallbackErrorTemplate)
-		if err != nil {
-			log.Fatalf("Failed to parse fallback template: %v", err)
-		}
-	} else {
-		log.Printf("Loaded error template from %s", path)
+		log.Printf("Error template not found at %s, using plain text fallback", path)
+		return nil
 	}
+	log.Printf("Loaded error template from %s", path)
 	return tmpl
 }
 
@@ -343,12 +329,27 @@ func parseRedirectType(t string) (int, error) {
 	}
 }
 
-// renderErrorPage renders a professional HTML error page
+// renderErrorPage renders an error page (HTML template or plain text fallback)
 func (rd *Redirector) renderErrorPage(w http.ResponseWriter, data ErrorPageData) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// Use HTML template if available
+	if rd.errorTemplate != nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(data.StatusCode)
+		if err := rd.errorTemplate.Execute(w, data); err != nil {
+			log.Printf("Error rendering error page: %v", err)
+		}
+		return
+	}
+
+	// Plain text fallback
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(data.StatusCode)
-	if err := rd.errorTemplate.Execute(w, data); err != nil {
-		log.Printf("Error rendering error page: %v", err)
+	msg := fmt.Sprintf("%d %s\n\n%s", data.StatusCode, data.Title, data.Message)
+	if data.Host != "" {
+		msg += fmt.Sprintf("\n\nHost: %s", data.Host)
+	}
+	if _, err := w.Write([]byte(msg)); err != nil {
+		log.Printf("Error writing error response: %v", err)
 	}
 }
 
