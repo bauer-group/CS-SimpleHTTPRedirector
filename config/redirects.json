@@ -1,23 +1,9 @@
 [
   {
-    "source": ["collaboration.app.bauer-group.com"],
-    "target": "https://bauer-group.atlassian.net/jira/",
+    "source": ["alte-domain.de", "www.alte-domain.de"],
+    "target": "https://neue-domain.de",
     "type": "temporary",
-    "preserve_path": false,
-    "preserve_query": false
-  },
-  {
-    "source": ["docs.app.bauer-group.com", "docs.bauer-group.com"],
-    "target": "https://bauer-group.atlassian.net/wiki/",
-    "type": "temporary",
-    "preserve_path": false,
-    "preserve_query": false
-  },
-  {
-    "source": ["dvcs.app.bauer-group.com", "dvcs.bauer-group.com"],
-    "target": "https://github.com/bauer-group/",
-    "type": "temporary",
-    "preserve_path": false,
-    "preserve_query": false
+    "preserve_path": true,
+    "preserve_query": true
   }
 ]
