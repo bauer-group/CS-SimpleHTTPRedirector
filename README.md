@@ -14,7 +14,7 @@ A lightweight, high-performance HTTP redirect service with JSON-based configurat
 - **Trusted Proxy Mode** - Configurable trust for proxy headers (`TRUST_PROXY`)
 - **Rate Limiting** - Built-in protection against request flooding
 - **Secure by Default** - Target URL validation prevents open redirect vulnerabilities
-- **Lightweight** - ~15MB Docker image based on Alpine Linux
+- **Lightweight** - ~30MB Docker image based on Alpine Linux
 - **Health Endpoint** - Built-in `/health` endpoint for container orchestration
 
 ## Quick Start
