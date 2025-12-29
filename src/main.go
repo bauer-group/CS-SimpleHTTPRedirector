@@ -98,6 +98,15 @@ func main() {
 			rule.PreservePath, rule.PreserveQuery)
 	}
 
+	// Log all source domains as URLs (useful for Coolify configuration)
+	var allSources []string
+	for _, rule := range redirector.rules {
+		for _, src := range rule.Source {
+			allSources = append(allSources, "https://"+src)
+		}
+	}
+	log.Printf("Domains (for Coolify): %s", strings.Join(allSources, ","))
+
 	// Get port from environment (default: 8080)
 	port := 8080
 	if portStr := os.Getenv("SERVER_PORT"); portStr != "" {
