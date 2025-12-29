@@ -1,0 +1,22 @@
+# Set default behavior to automatically normalize line endings
+* text=auto
+
+# Shell scripts: LF line endings
+# Note: File permissions (chmod +x) are tracked by Git's index, not gitattributes.
+# To avoid permission conflicts on clones, run: git config core.fileMode false
+# This is handled automatically by install.sh and update.sh
+*.sh text eol=lf
+
+# YAML files should use LF
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Markdown can use any line ending
+*.md text
+
+# Environment files (if tracked)
+.env* text eol=lf
+
+# Keep binary files as-is
+*.png binary
+*.jpg binary

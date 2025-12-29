@@ -1,0 +1,44 @@
+###############################################################################
+# SimpleHTTPRedirector - HTTP Redirect Service
+# Lightweight redirect service with JSON-based configuration
+# https://github.com/bauer-group/CS-SimpleHTTPRedirector
+###############################################################################
+
+services:
+  redirector:
+    build:
+      context: ./src
+      dockerfile: Dockerfile
+    image: bauergroup/simple-http-redirector:latest
+    container_name: ${STACK_NAME:-redirector}_APP
+    restart: unless-stopped
+    volumes:
+      - ${CONFIG_PATH:-./config}/redirects.json:/app/config/redirects.json:ro
+    expose:
+      - "8080/tcp"
+
+    # Traefik Labels for Coolify/Reverse Proxy
+    labels:
+      - "traefik.enable=true"
+
+      # HTTP Router - Redirect all configured hosts
+      - "traefik.http.routers.${STACK_NAME:-redirector}-http.rule=${REDIRECT_HOST_RULE}"
+      - "traefik.http.routers.${STACK_NAME:-redirector}-http.entrypoints=web"
+      - "traefik.http.routers.${STACK_NAME:-redirector}-http.service=${STACK_NAME:-redirector}-service"
+
+      # HTTPS Router - Redirect all configured hosts
+      - "traefik.http.routers.${STACK_NAME:-redirector}-https.rule=${REDIRECT_HOST_RULE}"
+      - "traefik.http.routers.${STACK_NAME:-redirector}-https.entrypoints=web-secure"
+      - "traefik.http.routers.${STACK_NAME:-redirector}-https.tls=true"
+      - "traefik.http.routers.${STACK_NAME:-redirector}-https.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.${STACK_NAME:-redirector}-https.service=${STACK_NAME:-redirector}-service"
+
+      # Service Definition
+      - "traefik.http.services.${STACK_NAME:-redirector}-service.loadbalancer.server.port=8080"
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    name: ${PROXY_NETWORK:-proxy}
+    external: true

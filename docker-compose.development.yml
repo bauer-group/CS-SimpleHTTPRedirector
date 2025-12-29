@@ -1,0 +1,21 @@
+###############################################################################
+# SimpleHTTPRedirector - HTTP Redirect Service (Development)
+# Lightweight redirect service with JSON-based configuration
+# https://github.com/bauer-group/CS-SimpleHTTPRedirector
+#
+# Usage: docker compose -f docker-compose.development.yml up --build
+###############################################################################
+
+services:
+  redirector:
+    build:
+      context: ./src
+      dockerfile: Dockerfile
+    container_name: http-redirector
+    restart: unless-stopped
+    expose:
+      - "8080/tcp"
+    ports:
+      - "${HOST_PORT:-8080}:8080"
+    volumes:
+      - ./config/redirects.json:/app/config/redirects.json:ro

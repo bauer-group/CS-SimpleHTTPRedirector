@@ -1,0 +1,20 @@
+###############################################################################
+# SimpleHTTPRedirector - HTTP Redirect Service (Coolify)
+# Lightweight redirect service with JSON-based configuration
+# https://github.com/bauer-group/CS-SimpleHTTPRedirector
+#
+# For Coolify: Configure domains in the Coolify GUI
+# The service URL will be set automatically by Coolify's proxy
+###############################################################################
+
+services:
+  redirector:
+    build:
+      context: ./src
+      dockerfile: Dockerfile
+    container_name: http-redirector
+    restart: unless-stopped
+    expose:
+      - "8080/tcp"
+    volumes:
+      - ./config/redirects.json:/app/config/redirects.json:ro

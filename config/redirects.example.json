@@ -1,0 +1,23 @@
+[
+  {
+    "source": ["alte-domain.de", "www.alte-domain.de"],
+    "target": "https://neue-domain.de",
+    "type": "permanent",
+    "preserve_path": true,
+    "preserve_query": true
+  },
+  {
+    "source": ["marketing-campaign.de"],
+    "target": "https://shop.example.com/campaign/summer2024",
+    "type": "temporary",
+    "preserve_path": false,
+    "preserve_query": true
+  },
+  {
+    "source": ["*.legacy.de"],
+    "target": "https://neu.de",
+    "type": "308",
+    "preserve_path": true,
+    "preserve_query": false
+  }
+]
