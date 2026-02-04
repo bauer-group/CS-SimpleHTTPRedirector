@@ -85,7 +85,7 @@ jobs:
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
     with:
       deploy-environment: 'production'
-      publish-to: 'both'
+      publish-to: 'ghcr'
       ghcr-image-name: 'bauer-group/CS-SimpleHTTPRedirector/simple-http-redirector'
       docker-image-name: 'bauergroup/simple-http-redirector'
 
