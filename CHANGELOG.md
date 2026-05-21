@@ -1,3 +1,9 @@
+## [0.2.1](https://github.com/bauer-group/CS-SimpleHTTPRedirector/compare/v0.2.0...v0.2.1) (2026-05-04)
+
+### 🐛 Bug Fixes
+
+* **env:** aligned PROXY_NETWORK default with EDGEPROXY ([5adcc32](https://github.com/bauer-group/CS-SimpleHTTPRedirector/commit/5adcc320d08ff160df62bd71bb7fdeb42edd3e75))
+
 # [0.2.0](https://github.com/bauer-group/CS-SimpleHTTPRedirector/compare/v0.1.1...v0.2.0) (2025-12-29)
 
 
