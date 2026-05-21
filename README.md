@@ -206,7 +206,7 @@ All redirects are logged with source, target, and status code:
 docker build -t simple-http-redirector:latest ./src
 
 # Build with specific Go version
-docker build --build-arg GO_VERSION=1.25 -t simple-http-redirector:latest ./src
+docker build --build-arg GO_VERSION=1.26 -t simple-http-redirector:latest ./src
 ```
 
 ## Architecture
