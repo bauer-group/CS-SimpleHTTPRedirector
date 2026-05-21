@@ -1,3 +1,9 @@
+## [0.2.2](https://github.com/bauer-group/CS-SimpleHTTPRedirector/compare/v0.2.1...v0.2.2) (2026-05-21)
+
+### 🐛 Bug Fixes
+
+* go Runtime 1.25 > 1.26 ([233f492](https://github.com/bauer-group/CS-SimpleHTTPRedirector/commit/233f492aad11f2f57594bd2b97007797a5014229))
+
 ## [0.2.1](https://github.com/bauer-group/CS-SimpleHTTPRedirector/compare/v0.2.0...v0.2.1) (2026-05-04)
 
 ### 🐛 Bug Fixes
