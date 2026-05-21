@@ -40,7 +40,7 @@ LABEL org.opencontainers.image.source="https://github.com/bauer-group/CS-SimpleH
 LABEL org.opencontainers.image.url="https://github.com/bauer-group/CS-SimpleHTTPRedirector"
 LABEL org.opencontainers.image.documentation="https://github.com/bauer-group/CS-SimpleHTTPRedirector#readme"
 LABEL org.opencontainers.image.description="Lightweight HTTP redirect service with JSON-based multi-rule configuration"
-LABEL org.opencontainers.image.version="0.0.0"
+LABEL org.opencontainers.image.version="0.2.2"
 
 # Install runtime dependencies (curl for healthcheck, ca-certificates for HTTPS)
 RUN apk add --no-cache ca-certificates curl tzdata \
