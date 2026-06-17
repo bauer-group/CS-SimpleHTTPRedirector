@@ -1,3 +1,9 @@
+## [0.2.3](https://github.com/bauer-group/CS-SimpleHTTPRedirector/compare/v0.2.2...v0.2.3) (2026-06-17)
+
+### 🐛 Bug Fixes
+
+* **logging:** clarified misleading error-template log line ([42e37e0](https://github.com/bauer-group/CS-SimpleHTTPRedirector/commit/42e37e057e6b35053870dc5b9b29f9d36788a3cb))
+
 ## [0.2.2](https://github.com/bauer-group/CS-SimpleHTTPRedirector/compare/v0.2.1...v0.2.2) (2026-05-21)
 
 ### 🐛 Bug Fixes
