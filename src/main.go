@@ -88,12 +88,12 @@ func main() {
 	}
 
 	if err := redirector.loadConfig(configPath); err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		logFatal("Failed to load config: %v", err)
 	}
 
-	log.Printf("Loaded %d redirect rules (trust_proxy=%v)", len(redirector.rules), redirector.config.TrustProxy)
+	logInfo("Loaded %d redirect rules (trust_proxy=%v)", len(redirector.rules), redirector.config.TrustProxy)
 	for _, rule := range redirector.rules {
-		log.Printf("  %v -> %s (%d, path=%v, query=%v)",
+		logInfo("  %v -> %s (%d, path=%v, query=%v)",
 			rule.Source, rule.Target, rule.statusCode,
 			rule.PreservePath, rule.PreserveQuery)
 	}
@@ -105,7 +105,7 @@ func main() {
 			allSources = append(allSources, "https://"+src)
 		}
 	}
-	log.Printf("Domains (for Coolify): %s", strings.Join(allSources, ","))
+	logInfo("Domains (for Coolify): %s", strings.Join(allSources, ","))
 
 	// Get port from environment (default: 8080)
 	port := 8080
@@ -131,9 +131,9 @@ func main() {
 	// Start rate limiter cleanup goroutine
 	go redirector.rateLimiter.cleanupLoop()
 
-	log.Printf("Starting HTTP Redirector on port %d", port)
+	logInfo("Starting HTTP Redirector on port %d", port)
 	if err := server.ListenAndServe(); err != nil {
-		log.Fatalf("Server failed: %v", err)
+		logFatal("Server failed: %v", err)
 	}
 }
 
@@ -153,14 +153,22 @@ func getEnvBool(key string, defaultVal bool) bool {
 	}
 }
 
+// Leveled logging helpers. Go's standard log package has no severity levels,
+// so we prefix each line ourselves. Padding aligns all messages at column 8
+// (e.g. "[INFO]  " vs "[ERROR] ") for readable console output.
+func logInfo(format string, v ...any)  { log.Printf("[INFO]  "+format, v...) }
+func logWarn(format string, v ...any)  { log.Printf("[WARN]  "+format, v...) }
+func logError(format string, v ...any) { log.Printf("[ERROR] "+format, v...) }
+func logFatal(format string, v ...any) { log.Fatalf("[FATAL] "+format, v...) }
+
 // loadErrorTemplate loads the error template from file, returns nil if not found
 func loadErrorTemplate(path string) *template.Template {
 	tmpl, err := template.ParseFiles(path)
 	if err != nil {
-		log.Printf("Error template not found at %s, using plain text fallback", path)
+		logWarn("No error template at %s; using plain-text fallback", path)
 		return nil
 	}
-	log.Printf("Loaded error template from %s", path)
+	logInfo("HTML error page loaded: %s", path)
 	return tmpl
 }
 
@@ -345,7 +353,7 @@ func (rd *Redirector) renderErrorPage(w http.ResponseWriter, data ErrorPageData)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(data.StatusCode)
 		if err := rd.errorTemplate.Execute(w, data); err != nil {
-			log.Printf("Error rendering error page: %v", err)
+			logError("Failed to render error page: %v", err)
 		}
 		return
 	}
@@ -358,7 +366,7 @@ func (rd *Redirector) renderErrorPage(w http.ResponseWriter, data ErrorPageData)
 		msg += fmt.Sprintf("\n\nHost: %s", data.Host)
 	}
 	if _, err := w.Write([]byte(msg)); err != nil {
-		log.Printf("Error writing error response: %v", err)
+		logError("Failed to write error response: %v", err)
 	}
 }
 
@@ -366,7 +374,7 @@ func (rd *Redirector) healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(map[string]string{"status": "healthy"}); err != nil {
-		log.Printf("Error encoding health response: %v", err)
+		logError("Failed to encode health response: %v", err)
 	}
 }
 
@@ -374,7 +382,7 @@ func (rd *Redirector) redirectHandler(w http.ResponseWriter, r *http.Request) {
 	// Rate limiting
 	clientIP := rd.getClientIP(r)
 	if !rd.rateLimiter.allow(clientIP) {
-		log.Printf("Rate limit exceeded for IP: %s", clientIP)
+		logWarn("Rate limit exceeded for IP: %s", clientIP)
 		rd.renderErrorPage(w, ErrorPageData{
 			StatusCode: http.StatusTooManyRequests,
 			Title:      "Too Many Requests",
@@ -388,7 +396,7 @@ func (rd *Redirector) redirectHandler(w http.ResponseWriter, r *http.Request) {
 
 	rule := rd.findMatchingRule(host)
 	if rule == nil {
-		log.Printf("No rule found for host: %s (X-Forwarded-Host: %s, Host: %s)",
+		logWarn("No rule found for host: %s (X-Forwarded-Host: %s, Host: %s)",
 			host, r.Header.Get("X-Forwarded-Host"), r.Host)
 		rd.renderErrorPage(w, ErrorPageData{
 			StatusCode: http.StatusNotFound,
