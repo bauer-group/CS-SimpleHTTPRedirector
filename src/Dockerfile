@@ -25,7 +25,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -o redirector main.go
 
 # === Runtime Stage ===
-FROM alpine:3.23
+FROM alpine:3
 
 # Metadata
 LABEL vendor="BAUER GROUP"
